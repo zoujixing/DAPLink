@@ -44,6 +44,14 @@
 #define UART_RX_PIN                  GPIO_Pin_3
 #define UART_RX_PIN_SOURCE           GPIO_PinSource3
 
+#define UART_CTS_PORT_ENABLE()       RCC_APB2PeriphClockCmd(RCC_APB2Periph_GPIOA , ENABLE)
+#define UART_CTS_PORT                GPIOA
+#define UART_CTS_PIN                 GPIO_Pin_0
+
+#define UART_RTS_PORT_ENABLE()       RCC_APB2PeriphClockCmd(RCC_APB2Periph_GPIOA , ENABLE)
+#define UART_RTS_PORT                GPIOA
+#define UART_RTS_PIN                 GPIO_Pin_1
+
 // Size must be 2^n for using quick wrap around
 #define  BUFFER_SIZE (512)
 
@@ -68,6 +76,14 @@ static UART_Configuration configuration = {
 extern uint32_t SystemCoreClock;
 
 
+static void delay(uint32_t n)
+{
+    while(n--) {
+        __NOP();
+        __NOP();
+        __NOP();
+    }
+}
 
 static void clear_buffers(void)
 {
@@ -111,7 +127,8 @@ int32_t uart_initialize(void)
     CDC_UART_ENABLE();
     UART_TX_PORT_ENABLE();
     UART_RX_PORT_ENABLE();
-
+    UART_CTS_PORT_ENABLE();
+    UART_RTS_PORT_ENABLE();
     //TX pin
     GPIO_InitStructure.GPIO_Pin = UART_TX_PIN;
     GPIO_InitStructure.GPIO_Speed = GPIO_Speed_50MHz;
@@ -121,6 +138,16 @@ int32_t uart_initialize(void)
     GPIO_InitStructure.GPIO_Pin = UART_RX_PIN;
     GPIO_InitStructure.GPIO_Mode = GPIO_Mode_IN_FLOATING;
     GPIO_Init(UART_RX_PORT, &GPIO_InitStructure);
+    //CTS pin, input
+    GPIO_InitStructure.GPIO_Pin = UART_CTS_PIN;
+    GPIO_InitStructure.GPIO_Mode = GPIO_Mode_IPU;
+    GPIO_Init(UART_CTS_PORT, &GPIO_InitStructure);
+    //RTS pin, output high
+    GPIO_InitStructure.GPIO_Pin = UART_RTS_PIN;
+    GPIO_InitStructure.GPIO_Speed = GPIO_Speed_50MHz;
+    GPIO_InitStructure.GPIO_Mode = GPIO_Mode_Out_PP;
+    GPIO_Init(UART_RTS_PORT, &GPIO_InitStructure);
+    GPIO_SetBits(UART_RTS_PORT, UART_RTS_PIN);
 
     //Only 8 bit support
     data_bits = USART_WordLength_8b;
@@ -162,6 +189,8 @@ int32_t uart_initialize(void)
     NVIC_ClearPendingIRQ(CDC_UART_IRQn);
 
     USART_Cmd(CDC_UART, ENABLE);
+    // Set RTS LOW
+    GPIO_ResetBits(UART_RTS_PORT, UART_RTS_PIN);
 
     return 1;
 }
@@ -188,6 +217,9 @@ int32_t uart_set_configuration(UART_Configuration *config)
     uint16_t stop_bits;
 
     USART_InitTypeDef USART_InitStructure;
+    // Set RTS HIGH
+    GPIO_SetBits(UART_RTS_PORT, UART_RTS_PIN);
+    delay(50000);
 
     // Disable uart and tx/rx interrupter
     USART_Cmd(CDC_UART, DISABLE);
@@ -238,6 +270,10 @@ int32_t uart_set_configuration(UART_Configuration *config)
 
     USART_Cmd(CDC_UART, ENABLE);
 
+    // Check whether read_buffer is full, if not, set RTS LOW
+    if( write_free(&read_buffer) > 0)
+        GPIO_ResetBits(UART_RTS_PORT, UART_RTS_PIN);
+
     return 1;
 }
 
@@ -275,7 +311,7 @@ int32_t uart_write_data(uint8_t *data, uint16_t size)
             write_buffer.head = 0;
     }
 
-    if(!tx_in_progress) {
+    if((!tx_in_progress) && (GPIO_ReadInputDataBit(UART_CTS_PORT, UART_CTS_PIN)==Bit_RESET)) {
         // Wait for tx is free
         //while(USART_GetITStatus(CDC_UART, USART_IT_TXE) == RESET);
 
@@ -308,6 +344,9 @@ int32_t uart_read_data(uint8_t *data, uint16_t size)
         if(read_buffer.tail >= BUFFER_SIZE)
             read_buffer.tail = 0;
     }
+    // Release RTS
+    if((write_free(&read_buffer)>2) && (GPIO_ReadOutputDataBit(UART_RTS_PORT, UART_RTS_PIN)==Bit_SET))
+        GPIO_ResetBits(UART_RTS_PORT, UART_RTS_PIN);
 
     return cnt;
 }
@@ -329,8 +368,9 @@ void CDC_UART_IRQn_Handler(void)
             read_buffer.data[read_buffer.head++] = dat;
             if(read_buffer.head >= BUFFER_SIZE)
                 read_buffer.head = 0;
-            if(cnt == 1) {
+            if(cnt <= 2) {
                 // for flow control, need to set RTS = 1
+                GPIO_SetBits(UART_RTS_PORT, UART_RTS_PIN);
             }
         }
     }
@@ -343,10 +383,17 @@ void CDC_UART_IRQn_Handler(void)
             tx_in_progress = 0;
         }
         else {
-            USART_SendData(CDC_UART, write_buffer.data[write_buffer.tail++]);
-            if(write_buffer.tail >= BUFFER_SIZE)
-                write_buffer.tail = 0;
-            tx_in_progress = 1;
+            if(GPIO_ReadInputDataBit(UART_CTS_PORT, UART_CTS_PIN)==Bit_RESET) {
+                // CTS is LOW
+                USART_SendData(CDC_UART, write_buffer.data[write_buffer.tail++]);
+                if(write_buffer.tail >= BUFFER_SIZE)
+                    write_buffer.tail = 0;
+                tx_in_progress = 1;
+            }
+            else {
+                USART_ITConfig(CDC_UART, USART_IT_TXE, DISABLE);
+                tx_in_progress = 0;
+            }
         }
     }
 }
