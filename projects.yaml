@@ -209,4 +209,7 @@ projects:
         - *module_if
         - *module_hic_gd32f103cb
         - records/board/rblnano.yaml
-        
+    gd32f103cb_rblnano2_if:
+        - *module_if
+        - *module_hic_gd32f103cb
+        - records/board/rblnano2.yaml
