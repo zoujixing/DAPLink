@@ -48,9 +48,14 @@ COMPILER_ASSERT(DAPLINK_HIC_ID == DAPLINK_HIC_ID_STM32F103XB);
 
 //Press and power, enter bootloader 7
 //When daplnk_if, reset target board
+#define nRESET_IN_PIN_PORT           GPIOB
+#define nRESET_IN_PIN                GPIO_Pin_7
+#define nRESET_IN_PIN_Bit            7
+
+//Hardware reset pin
 #define nRESET_PIN_PORT              GPIOB
-#define nRESET_PIN                   GPIO_Pin_7
-#define nRESET_PIN_Bit               7
+#define nRESET_PIN                   GPIO_Pin_11
+#define nRESET_PIN_Bit               11
 
 //SWD
 #define SWCLK_TCK_PIN_PORT           GPIOB

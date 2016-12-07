@@ -73,10 +73,14 @@ void gpio_init(void)
     GPIO_Init(PIN_MSC_LED_PORT, &GPIO_InitStructure);
     GPIO_ResetBits(PIN_MSC_LED_PORT, PIN_MSC_LED);
 
-    // reset button configured as gpio input_pullup
     GPIO_InitStructure.GPIO_Pin = nRESET_PIN;
-    GPIO_InitStructure.GPIO_Mode = GPIO_Mode_IPU;
     GPIO_Init(nRESET_PIN_PORT, &GPIO_InitStructure);
+    GPIO_SetBits(nRESET_PIN_PORT, nRESET_PIN);
+    
+    // reset button configured as gpio input_pullup
+    GPIO_InitStructure.GPIO_Pin = nRESET_IN_PIN;
+    GPIO_InitStructure.GPIO_Mode = GPIO_Mode_IPU;
+    GPIO_Init(nRESET_IN_PIN_PORT, &GPIO_InitStructure);
 
     // Keep powered off in bootloader mode
     // to prevent the target from effecting the state
@@ -140,10 +144,8 @@ uint8_t gpio_get_sw_reset(void)
     uint8_t reset_forward_pressed;
     uint8_t reset_pressed;
 
-    // Set nRESET_PIN to input pull-up, then read status
-    pin_in_init(nRESET_PIN_PORT, nRESET_PIN_Bit, 1);
-    busy_wait(5);
-    reset_forward_pressed = (nRESET_PIN_PORT->IDR & nRESET_PIN) ? 0 : 1;
+    // Read nRESET_IN_PIN status
+    reset_forward_pressed = (nRESET_IN_PIN_PORT->IDR & nRESET_IN_PIN) ? 0 : 1;
     // Forward reset if the state of the button has changed
     //    This must be done on button changes so it does not interfere
     //    with other reset sources such as programming or CDC Break
@@ -158,10 +160,7 @@ uint8_t gpio_get_sw_reset(void)
 #endif
         last_reset_forward_pressed = reset_forward_pressed;
     }
-    reset_pressed = reset_forward_pressed || ((nRESET_PIN_PORT->IDR & nRESET_PIN) ? 0 : 1);
-    // Config nRESET_PIN to output
-    pin_out_init(nRESET_PIN_PORT, nRESET_PIN_Bit);
-    nRESET_PIN_PORT->BSRR = nRESET_PIN;
+    reset_pressed = reset_forward_pressed || ((nRESET_IN_PIN_PORT->IDR & nRESET_IN_PIN) ? 0 : 1);
 
     return !reset_pressed;
 }
