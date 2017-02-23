@@ -110,34 +110,7 @@ void gpio_set_msc_led(gpio_led_state_t state)
 
 uint8_t gpio_get_sw_reset(void)
 {
-    static uint8_t last_reset_forward_pressed = 0;
-    uint8_t reset_forward_pressed;
-    uint8_t reset_pressed;
-
-    // Set nRESET_PIN to input pull-up, then read status
-    pin_in(nRESET_PIN_PORT, nRESET_PIN_Bit, 2);
-    busy_wait(5);
-    reset_forward_pressed = (nRESET_PIN_PORT->DIR & nRESET_PIN) ? 0 : 1;
-    // Forward reset if the state of the button has changed
-    //    This must be done on button changes so it does not interfere
-    //    with other reset sources such as programming or CDC Break
-    if(last_reset_forward_pressed != reset_forward_pressed) {
-#if defined(DAPLINK_IF)
-        if(reset_forward_pressed) {
-            target_set_state(RESET_HOLD);
-        }
-        else {
-            target_set_state(RESET_RUN);
-        }
-#endif
-        last_reset_forward_pressed = reset_forward_pressed;
-    }
-    reset_pressed = reset_forward_pressed || ((nRESET_PIN_PORT->DIR & nRESET_PIN) ? 0 : 1);
-    // Config nRESET_PIN to output
-    pin_out(nRESET_PIN_PORT, nRESET_PIN_Bit);
-    nRESET_PIN_PORT->BOR = nRESET_PIN;
-
-    return !reset_pressed;
+    return (nRESET_PIN_PORT->DIR & nRESET_PIN) ? 1 : 0;
 }
 
 uint8_t GPIOGetButtonState(void)
