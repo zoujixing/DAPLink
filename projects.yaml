@@ -269,3 +269,8 @@ projects:
         - *module_if
         - *module_hic_gd32f103cb
         - records/board/rblnano.yaml
+    gd32f103cb_stm32f412_if:
+        - *module_if
+        - *module_hic_gd32f103cb
+        - records/board/rbl_stm32f412.yaml
+        
