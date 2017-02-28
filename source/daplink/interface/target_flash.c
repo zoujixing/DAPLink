@@ -52,6 +52,8 @@ static const flash_intf_t flash_intf = {
 
 const flash_intf_t *const flash_intf_target = &flash_intf;
 
+static uint8_t need_erase_start_sector = false;
+
 static error_t target_flash_init()
 {
     const program_target_t *const flash = target_device.flash_algo;
@@ -68,6 +70,8 @@ static error_t target_flash_init()
     if (0 == swd_flash_syscall_exec(&flash->sys_call_s, flash->init, target_device.flash_start, 0, 0, 0)) {
         return ERROR_INIT;
     }
+
+    need_erase_start_sector = true;
 
     return ERROR_SUCCESS;
 }
@@ -136,17 +140,56 @@ static error_t target_flash_program_page(uint32_t addr, const uint8_t *buf, uint
     return ERROR_SUCCESS;
 }
 
+static uint8_t target_flash_get_sector_num(uint32_t addr)
+{
+    uint8_t n;
+
+    n = (addr >> 12) & 0x000FF;
+    if(n >= 0x20) {
+        n = 4 + (n >> 5);
+    }	
+    else  if(n >= 0x10) {
+        n = 3 + (n >> 4);
+    }
+    else {
+        n = 0 + (n >> 2);
+    }
+
+    return n;
+}
+
 static error_t target_flash_erase_sector(uint32_t addr)
 {
     const program_target_t *const flash = target_device.flash_algo;
-
+    uint8_t sector_num;
     // Check to make sure the address is on a sector boundary
     if ((addr % target_device.sector_size) != 0) {
         return ERROR_ERASE_SECTOR;
     }
 
-    if (0 == swd_flash_syscall_exec(&flash->sys_call_s, flash->erase_sector, addr, 0, 0, 0)) {
-        return ERROR_ERASE_SECTOR;
+    if(need_erase_start_sector) {
+        sector_num = target_flash_get_sector_num(addr);
+        if(sector_num < 4) {
+            addr = 0x08000000 + 0x4000 * sector_num;
+        }
+        else if(sector_num < 5) {
+            addr = 0x08010000;
+        }
+        else {
+            addr = 0x08020000 + ((sector_num - 5) * 0x20000);
+        }
+
+        need_erase_start_sector = false;
+    }
+
+		if((addr == 0x08000000) || (addr == 0x08004000) || (addr == 0x08008000) || (addr == 0x0800C000) || 
+       (addr == 0x08010000) || 
+       (addr == 0x08020000) || (addr == 0x08040000) || (addr == 0x08060000) || (addr == 0x08080000) ||
+       (addr == 0x080A0000) || (addr == 0x080C0000) || (addr == 0x080E0000) ) {
+        // Erase sector 
+        if (0 == swd_flash_syscall_exec(&flash->sys_call_s, flash->erase_sector, addr, 0, 0, 0)) {
+           return ERROR_ERASE_SECTOR;
+       }
     }
 
     return ERROR_SUCCESS;
